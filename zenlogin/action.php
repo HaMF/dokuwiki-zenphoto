@@ -15,7 +15,8 @@
     require_once DOKU_PLUGIN.'action.php';
 
     class action_plugin_zenlogin extends DokuWiki_Action_Plugin {
-        var $cookie_name;
+        var $ignored_users;
+        var $zp_cookie_name;
         var $zp_path;
         var $zp_mysql_user;
         var $zp_mysql_pass;
@@ -26,8 +27,9 @@
         var $zp_rights;
         var $zp_hash_method;
 
+
         function action_plugin_zenlogin() {
-            $this->cookie_name = 'zp_user_auth';
+            $this->zp_cookie_name = 'zp_user_auth';
             $this->zp_path = $this->getConf('zenphoto_path');
             $this->zp_mysql_user = $this->getConf('mysql_user');
             $this->zp_mysql_pass = $this->getConf('mysql_password');
@@ -37,6 +39,7 @@
             $this->zp_userpass_hash = $this->getConf('user_password_hash');
             $this->zp_hash_method = self::getNumericHashMethod($this->getConf('zp_hash_method'));
             $this->zp_rights = self::getNumericRights($this->getConf('zenphoto_permissions'));
+            $this->ignored_users = split(",", $this->getConf('ignored_users'));
         }
 
 
@@ -183,9 +186,9 @@
                 $userid = $this->zenphoto_getUserId($user);
                 $pwhash = $this->zenphoto_hashpw($user, $password);
                 if($sticky)
-                    setcookie($this->cookie_name, $pwhash . "." . $userid, time()+(60*60*24*365), $this->zp_path); // 1 year, Dokuwiki default
+                    setcookie($this->zp_cookie_name, $pwhash . "." . $userid, time()+(60*60*24*365), $this->zp_path); // 1 year, Dokuwiki default
                 else
-                    setcookie($this->cookie_name, $pwhash . "." . $userid, null, $this->zp_path); // browser close
+                    setcookie($this->zp_cookie_name, $pwhash . "." . $userid, null, $this->zp_path); // browser close
             }
         }
 
@@ -196,7 +199,7 @@
          */
         function zenphoto_logout() {
             if($this->getConf('single_sign_on'))
-              setcookie($this->cookie_name, '', time()-31536000, $this->zp_path);
+              setcookie($this->zp_cookie_name, '', time()-31536000, $this->zp_path);
         }
 
         /**
@@ -206,8 +209,9 @@
          */
         function event_headers_send(&$event, $param) {
             // No userlogin, might be a logout 
-            if($_SERVER['REMOTE_USER'] == "")
+            if($_SERVER['REMOTE_USER'] == "") {
                 $this->zenphoto_logout();
+            }
         }
 
 
@@ -218,16 +222,19 @@
          */
         function event_login(&$event, $param) {
             // Check if user is set (this is only the case if we just pressed login, while the session is running the event happens but no user is set)
-            if($event->data['user'] != "")
+            if($event->data['user'] != "" && ! in_array($event->data['user'], $this->ignored_users)) {
                 $this->zenphoto_login($event->data['user'], $event->data['password'], $event->data['sticky'] == 1);
+            }
         }
 
         /**
          * Update user information in zenphoto as well
          */
         function event_userchange(&$event, $param) {
-            // Connect to zenphoto database...
-            
+            if( in_array($event->data['params'][0], $this->ignored_users)) {
+                return false;
+            }
+
             try {
                 $dbh = new PDO('mysql:host='.$this->zp_mysql_host.';port=9306;dbname='.$this->zp_mysql_database.';', $this->zp_mysql_user, $this->zp_mysql_pass);
             } catch (PDOException $e) {
