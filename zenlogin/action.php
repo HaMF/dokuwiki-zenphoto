@@ -140,7 +140,7 @@
          * 
          *  @return string derived hash with seed conf zp_userpass_hash
          */
-        static function zenphoto_hashpw($user, $password) {
+        function zenphoto_hashpw($user, $password) {
             switch ($this->zp_hash_method) {
                 case 2:
                     return base64_encode(self::pbkdf2($password,$user.$this->zp_userpass_hash));
@@ -165,11 +165,10 @@
                 die();
             }
 
-            $select_query = $dbh->prepare("SELECT id FROM administrators WHERE user = :user");
+            $select_query = $dbh->prepare("SELECT id FROM " . $this->zp_mysql_prefix . "administrators WHERE user = :user");
             $select_query->bindParam(":user", $username);
             $select_data = $select_query->fetch();
 
-            print_r($select_data);
             return $select_data['id'];
         }
 
