@@ -10,5 +10,3 @@ $conf['user_password_hash'] = "";
 $conf['synchronize_users'] = 1;
 $conf['zenphoto_permissions'] = 'overview_rights';
 $conf['single_sign_on'] = 1;
-
-?>

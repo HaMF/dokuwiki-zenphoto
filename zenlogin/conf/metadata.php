@@ -46,4 +46,3 @@ $rightsset = array(	'NO_RIGHTS' => array('value'=>1,'name'=>gettext('No rights')
 
 $meta['zenphoto_permissions'] = array('multicheckbox','_choices' => array_keys($rightsset));
 $meta['single_sign_on'] = array('onoff');
-?>
