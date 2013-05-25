@@ -29,29 +29,51 @@
             $this->zp_mysql_database = $this->getConf('mysql_database');
             $this->zp_mysql_prefix = $this->getConf('mysql_prefix');
             $this->zp_userpass_hash = $this->getConf('user_password_hash');
-            $rights = split(",", $this->getConf('zenphoto_permissions'));
-            $right_numeric = 0;
-            foreach($rights as $right)
-            {
-                if($right == "overview_rights") $right_numeric += 2^2;
-                else if($right == "view_all_rights") $right_numeric += 2^4;
-                else if($right == "upload_rights") $right_numeric += 2^6;
-                else if($right == "post_comment_rights") $right_numeric += 2^8;
-                else if($right == "comment_rights") $right_numeric += 2^10;
-                else if($right == "album_rights") $right_numeric += 2^12;
-                else if($right == "zenpage_pages_rights") $right_numeric += 2^14;
-                else if($right == "zenpage_news_rights") $right_numeric += 2^16;
-                else if($right == "files_rights") $right_numeric += 2^18;
-                else if($right == "manage_all_pages_rights") $right_numeric += 2^20;
-                else if($right == "manage_all_news_rights") $right_numeric += 2^22;
-                else if($right == "manage_all_album_rights") $right_numeric += 2^24;
-                else if($right == "themes_rights") $right_numeric += 2^26;
-                else if($right == "tags_rights") $right_numeric += 2^28;
-                else if($right == "options_rights") $right_numeric += 2^29;
-                else if($right == "admin_rights") $right_numeric += 2^30;
-            }
-            $this->zp_rights = $right_numeric;
+            $this->zp_rights = self::getNumericRights($this->getConf('zenphoto_permissions'));
         }
+
+
+        static function getNumericRights($zenphoto_permissions) {
+            $right_to_numeric = function($v, $search_key) {
+                $rightsset = array( 'NO_RIGHTS' => array('value'=>1,'name'=>gettext('No rights'),'set'=>'','display'=>false,'hint'=>''),
+                                    'OVERVIEW_RIGHTS' => array('value'=>pow(2,2),'name'=>gettext('Overview'),'set'=>gettext('General'),'display'=>true,'hint'=>gettext('Users with this right may view the admin overview page.')),
+                                    'USER_RIGHTS' => array('value'=>pow(2,3),'name'=>gettext('User'),'set'=>gettext('General'),'display'=>true,'hint'=>gettext('Users must have this right to change their credentials.')),
+
+                                    'VIEW_GALLERY_RIGHTS' => array('value'=>pow(2,5),'name'=>gettext('View gallery'),'set'=>gettext('Gallery'),'display'=>true,'hint'=>gettext('Users with this right may view otherwise protected generic gallery pages.')),
+                                    'VIEW_SEARCH_RIGHTS' => array('value'=>pow(2,6),'name'=>gettext('View search'),'set'=>gettext('Gallery'),'display'=>true,'hint'=>gettext('Users with this right may view search pages even if password protected.')),
+                                    'VIEW_FULLIMAGE_RIGHTS' => array('value'=>pow(2,7),'name'=>gettext('View fullimage'),'set'=>gettext('Albums'),'display'=>true,'hint'=>gettext('Users with this right may view all full sized (raw) images.')),
+                                    'ALL_NEWS_RIGHTS' => array('value'=>pow(2,8),'name'=>gettext('Access all'),'set'=>gettext('News'),'display'=>true,'hint'=>gettext('Users with this right have access to all zenpage news articles.')),
+                                    'ALL_PAGES_RIGHTS' => array('value'=>pow(2,9),'name'=>gettext('Access all'),'set'=>gettext('Pages'),'display'=>true,'hint'=>gettext('Users with this right have access to all zenpage pages.')),
+                                    'ALL_ALBUMS_RIGHTS' => array('value'=>pow(2,10),'name'=>gettext('Access all'),'set'=>gettext('Albums'),'display'=>true,'hint'=>gettext('Users with this right have access to all albums.')),
+                                    'VIEW_UNPUBLISHED_RIGHTS' => array('value'=>pow(2,11),'name'=>gettext('View unpublished'),'set'=>gettext('Albums'),'display'=>true,'hint'=>gettext('Users with this right will see all unpublished items.')),
+
+                                    'POST_COMMENT_RIGHTS'=> array('value'=>pow(2,13),'name'=>gettext('Post comments'),'set'=>gettext('Gallery'),'display'=>true,'hint'=>gettext('When the comment_form plugin is used for comments and its "Only members can comment" option is set, only users with this right may post comments.')),
+                                    'COMMENT_RIGHTS' => array('value'=>pow(2,14),'name'=>gettext('Comments'),'set'=>gettext('Gallery'),'display'=>true,'hint'=>gettext('Users with this right may make comments tab changes.')),
+                                    'UPLOAD_RIGHTS' => array('value'=>pow(2,15),'name'=>gettext('Upload'),'set'=>gettext('Albums'),'display'=>true,'hint'=>gettext('Users with this right may upload to the albums for which they have management rights.')),
+
+                                    'ZENPAGE_NEWS_RIGHTS' => array('value'=>pow(2,17),'name'=>gettext('News'),'set'=>gettext('News'),'display'=>false,'hint'=>gettext('Users with this right may edit and manage Zenpage articles and categories.')),
+                                    'ZENPAGE_PAGES_RIGHTS' => array('value'=>pow(2,18),'name'=>gettext('Pages'),'set'=>gettext('Pages'),'display'=>false,'hint'=>gettext('Users with this right may edit and manage Zenpage pages.')),
+                                    'FILES_RIGHTS' => array('value'=>pow(2,19),'name'=>gettext('Files'),'set'=>gettext('Gallery'),'display'=>true,'hint'=>gettext('Allows the user access to the "filemanager" located on the upload: files sub-tab.')),
+                                    'ALBUM_RIGHTS' => array('value'=>pow(2,20),'name'=>gettext('Albums'),'set'=>gettext('Albums'),'display'=>false,'hint'=>gettext('Users with this right may access the "albums" tab to make changes.')),
+
+                                    'MANAGE_ALL_NEWS_RIGHTS' => array('value'=>pow(2,21),'name'=>gettext('Manage all'),'set'=>gettext('News'),'display'=>true,'hint'=>gettext('Users who do not have "Admin" rights normally are restricted to manage only objects to which they have been assigned. This right allows them to manage any Zenpage news article or category.')),
+                                    'MANAGE_ALL_PAGES_RIGHTS' => array('value'=>pow(2,22),'name'=>gettext('Manage all'),'set'=>gettext('Pages'),'display'=>true,'hint'=>gettext('Users who do not have "Admin" rights normally are restricted to manage only objects to which they have been assigned. This right allows them to manage any Zenpage page.')),
+                                    'MANAGE_ALL_ALBUM_RIGHTS' => array('value'=>pow(2,23),'name'=>gettext('Manage all'),'set'=>gettext('Albums'),'display'=>true,'hint'=>gettext('Users who do not have "Admin" rights normally are restricted to manage only objects to which they have been assigned. This right allows them to manage any album in the gallery.')),
+
+                                    'THEMES_RIGHTS' => array('value'=>pow(2,26),'name'=>gettext('Themes'),'set'=>gettext('Gallery'),'display'=>true,'hint'=>gettext('Users with this right may make themes related changes. These are limited to the themes associated with albums checked in their managed albums list.')),
+
+                                    'TAGS_RIGHTS' => array('value'=>pow(2,28),'name'=>gettext('Tags'),'set'=>gettext('Gallery'),'display'=>true,'hint'=>gettext('Users with this right may make additions and changes to the set of tags.')),
+                                    'OPTIONS_RIGHTS' => array('value'=>pow(2,29),'name'=>gettext('Options'),'set'=>gettext('General'),'display'=>true,'hint'=>gettext('Users with this right may make changes on the options tabs.')),
+                                    'ADMIN_RIGHTS' => array('value'=>pow(2,30),'name'=>gettext('Admin'),'set'=>gettext('General'),'display'=>true,'hint'=>gettext('The master privilege. A user with "Admin" can do anything. (No matter what his other rights might indicate!)')));
+
+                return $v + $rightsset[$search_key]['value'];
+            };
+
+            $rights = split(",", $zenphoto_permissions);
+            
+            return array_reduce($rights, $right_to_numeric);
+        }
+            
 
 
         /**
