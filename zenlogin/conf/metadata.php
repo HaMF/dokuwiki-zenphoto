@@ -45,4 +45,7 @@ $rightsset = array(	'NO_RIGHTS' => array('value'=>1,'name'=>gettext('No rights')
 					'ADMIN_RIGHTS' => array('value'=>pow(2,30),'name'=>gettext('Admin'),'set'=>gettext('General'),'display'=>true,'hint'=>gettext('The master privilege. A user with "Admin" can do anything. (No matter what his other rights might indicate!)')));
 
 $meta['zenphoto_permissions'] = array('multicheckbox','_choices' => array_keys($rightsset));
+
+$meta['zp_hash_method'] = array('multichoice', '_choices' => array('pbkdf2', 'sha1', 'md5'));
+
 $meta['single_sign_on'] = array('onoff');
