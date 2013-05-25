@@ -1,7 +1,12 @@
 <?php
     /**
-     * Example Action Plugin:   Example Component.
+     * Synchronize dokuwiki user database with zenphoto database
      *
+     * The plugin hooks into user creation and modification as well
+     * as log on and log off events and relays them to a zenphoto 
+     * instance.
+     * 
+     * @author     Hannes Maier-Flaig <hamfbohne@gmail.com>
      * @author     Stefan Agner <falstaff@deheime.ch>
      */
      
@@ -21,7 +26,7 @@
         var $zp_rights;
 
         function action_plugin_zenlogin() {
-            $this->cookie_name = 'zenphoto_auth';
+            $this->cookie_name = 'zp_user_auth';
             $this->zp_path = $this->getConf('zenphoto_path');
             $this->zp_mysql_user = $this->getConf('mysql_user');
             $this->zp_mysql_pass = $this->getConf('mysql_password');
@@ -101,6 +106,27 @@
         }
 
         /**
+         * Get user-id in zenphoto by user name
+         *
+         * @param string username
+         */
+
+        function zenphoto_getUserId($username) {
+            try {
+                $dbh = new PDO('mysql:host='.$this->zp_mysql_host.';port=9306;dbname='.$this->zp_mysql_database.';', $this->zp_mysql_user, $this->zp_mysql_pass);
+            } catch (PDOException $e) {
+                print "Error!: " . $e->getMessage() . "<br/>";
+                die();
+            }
+
+            $select_query = $dbh->prepare("SELECT id FROM administrators WHERE user = :user");
+            $select_query->bindParam(":user", $username);
+            $select_data = $select_query->fetch();
+            print_r($select_data);
+            return $select_data['id'];
+        }
+
+        /**
          * Set cookie to login zenphoto as well
          *
          * @author Stefan Agner <stefan@agner.ch>
@@ -108,11 +134,12 @@
         function zenphoto_login($user, $password, $sticky=true) {
             if($this->getConf('single_sign_on'))
             {
+                $userid = $this->zenphoto_getUserId($user);
                 $pwhash = $this->zenphoto_hashpw($user, $password);
                 if($sticky)
-                    setcookie($this->cookie_name, $pwhash, time()+(60*60*24*365), $this->zp_path); // 1 year, Dokuwiki default
+                    setcookie($this->cookie_name, $pwhash . "." . $userid, time()+(60*60*24*365), $this->zp_path); // 1 year, Dokuwiki default
                 else
-                    setcookie($this->cookie_name, $pwhash, null, $this->zp_path); // browser close
+                    setcookie($this->cookie_name, $pwhash . "." . $userid, null, $this->zp_path); // browser close
             }
         }
 
@@ -147,7 +174,6 @@
             // Check if user is set (this is only the case if we just pressed login, while the session is running the event happens but no user is set)
             if($event->data['user'] != "")
                 $this->zenphoto_login($event->data['user'], $event->data['password'], $event->data['sticky'] == 1);
-
         }
 
         /**
