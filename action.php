@@ -39,7 +39,7 @@
             $this->zp_userpass_hash = $this->getConf('user_password_hash');
             $this->zp_hash_method = self::getNumericHashMethod($this->getConf('zp_hash_method'));
             $this->zp_rights = self::getNumericRights($this->getConf('zenphoto_permissions'));
-            $this->ignored_users = split(",", $this->getConf('ignored_users'));
+            $this->ignored_users = explode(",", $this->getConf('ignored_users'));
         }
 
 
@@ -53,7 +53,7 @@
                 return $v + self::getRightsset()[$search_key]['value'];
             };
 
-            $rights = split(",", $zenphoto_permissions);
+            $rights = explode(",", $zenphoto_permissions);
             
             return array_reduce($rights, $right_to_numeric);
         }
