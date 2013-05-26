@@ -156,6 +156,23 @@
         }
 
         /**
+         * Get the correct password hashing algorithm for a user with given username
+         *
+         *  @param string user username
+         * 
+         *  @return (integer >= 2) 2=pbkdf2 1=sha1 0=md5 
+         */
+        function zenphoto_getUserHashMethod($user) {
+            if ($dbh = $this->getDatabaseHandle()) {
+                $select_query = $dbh->prepare('SELECT user, passhash  FROM  '. $this->zp_mysql_prefix . 'administrators  WHERE user = :user;');
+                $select_query->bindParam(':user', $user);
+                $select_query->execute();
+                
+                return $select_query->fetchColumn(1) ;
+            }
+        }
+
+        /**
          * Calculates password hash the zenphoto way
          *
          *  @param string user
@@ -164,7 +181,7 @@
          *  @return string derived hash with seed conf zp_userpass_hash
          */
         function zenphoto_hashpw($user, $password) {
-            switch ($this->zp_hash_method) {
+            switch ($this->zenphoto_getUserHashMethod($user)) {
                 case 2:
                     return base64_encode(self::pbkdf2($password,$user.$this->zp_userpass_hash));
                 case 1:
@@ -300,7 +317,7 @@
                     $update_query->bindParam(":user", $event->data['params'][0]);
                     $update_query->execute();
 
-                    $this->zenphoto_login($user, $event->data['params'][1]["pass"]);
+                    $this->zenphoto_login($event->data['params'][0], $event->data['params'][1]["pass"]); //this will remove the login an admin changing the password of another user
 
                     $this->zenphoto_grantAlbumRights($event->data['params'][0]);
                 }
