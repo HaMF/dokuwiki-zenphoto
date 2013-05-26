@@ -12,3 +12,4 @@ $meta['zenphoto_permissions'] = array('multicheckbox','_choices' => array_keys(a
 $meta['zp_hash_method'] = array('multichoice', '_choices' => array('pbkdf2', 'sha1', 'md5'));
 $meta['single_sign_on'] = array('onoff');
 $meta['ignored_users'] = '';
+$meta['upload_albums'] = '';

@@ -3,5 +3,5 @@ author Hannes Maier-Flaig
 email  hamfbohne@gmail.com
 date   2013-05-25
 name   ZenPhoto User Synchronization/Login
-desc   Synchronize new and modified user details from dokuwiki to a zenphoto database. The plugin also provides a simple single sign on mechanism. Based heavily on the zenlogin plugin by Stefan Agner <falstaff@deheime.ch>.
+desc   Synchronize new and modified user details from dokuwiki to a zenphoto database. The plugin also provides a simple single sign on mechanism. Based heavily on the zenlogin plugin by Stefan Agner falstaff(at)deheime.ch
 url    http://hannes.maier-flaig.de/zenphotosso

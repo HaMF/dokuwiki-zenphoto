@@ -15,6 +15,7 @@
     require_once DOKU_PLUGIN.'action.php';
 
     class action_plugin_zenphotosso extends DokuWiki_Action_Plugin {
+        var $dbh;
         var $ignored_users;
         var $zp_cookie_name;
         var $zp_path;
@@ -26,6 +27,7 @@
         var $zp_userpass_hash; // This hash value could be found on zenphoto admin/options/general tab
         var $zp_rights;
         var $zp_hash_method;
+        var $zp_albums;
 
 
         function action_plugin_zenphotosso() {
@@ -39,15 +41,31 @@
             $this->zp_userpass_hash = $this->getConf('user_password_hash');
             $this->zp_hash_method = self::getNumericHashMethod($this->getConf('zp_hash_method'));
             $this->zp_rights = self::getNumericRights($this->getConf('zenphoto_permissions'));
+            $this->zp_albums = explode(",", $this->getConf('upload_albums'));
             $this->ignored_users = explode(",", $this->getConf('ignored_users'));
         }
 
+
+        function getDatabaseHandle() {
+            if (isset($this->dbh) ) {
+                return $this->dbh;
+            }
+
+            try {
+                $this->dbh = new PDO('mysql:host='.$this->zp_mysql_host.';port=9306;dbname='.$this->zp_mysql_database.';', $this->zp_mysql_user, $this->zp_mysql_pass);
+                return $this->dbh;
+            } catch (PDOException $e) {
+                dbglog("Error!: " . $e->getMessage());
+                return false;
+            }
+        }
 
         static function getNumericHashMethod($zp_hash_method) {
             $hash_methods = array('md5' => 0, 'sha1' => 1, 'pbkdf2' => 2);
 
             return $hash_methods[$zp_hash_method];
         }
+
         static function getNumericRights($zenphoto_permissions) {
             $right_to_numeric = function($v, $search_key) {
                 return $v + self::getRightsset()[$search_key]['value'];
@@ -160,21 +178,21 @@
          * Get user-id in zenphoto by user name
          *
          * @param string username
+         * @param integer userid | bool false
          */
 
         function zenphoto_getUserId($username) {
-            try {
-                $dbh = new PDO('mysql:host='.$this->zp_mysql_host.';port=9306;dbname='.$this->zp_mysql_database.';', $this->zp_mysql_user, $this->zp_mysql_pass);
-            } catch (PDOException $e) {
-                print "Error!: " . $e->getMessage() . "<br/>";
-                die();
+            if ($dbh = $this->getDatabaseHandle()) {
+                $select_query = $dbh->prepare("SELECT id FROM " . $this->zp_mysql_prefix . "administrators WHERE user = :user");
+                $select_query->bindParam(":user", $username);
+                $select_query->execute();
+                $select_data = $select_query->fetch();
+
+                return $select_data['id'];
+            } else {
+                return false;
             }
-
-            $select_query = $dbh->prepare("SELECT id FROM " . $this->zp_mysql_prefix . "administrators WHERE user = :user");
-            $select_query->bindParam(":user", $username);
-            $select_data = $select_query->fetch();
-
-            return $select_data['id'];
+                
         }
 
         /**
@@ -184,6 +202,9 @@
             if($this->getConf('single_sign_on'))
             {
                 $userid = $this->zenphoto_getUserId($user);
+                if( ! $userid) {
+                    return false;
+                }
                 $pwhash = $this->zenphoto_hashpw($user, $password);
                 if($sticky)
                     setcookie($this->zp_cookie_name, $pwhash . "." . $userid, time()+(60*60*24*365), $this->zp_path); // 1 year, Dokuwiki default
@@ -231,15 +252,12 @@
          * Update user information in zenphoto as well
          */
         function event_userchange(&$event, $param) {
-            if( in_array($event->data['params'][0], $this->ignored_users)) {
+            if (in_array($event->data['params'][0], $this->ignored_users)) {
                 return false;
             }
 
-            try {
-                $dbh = new PDO('mysql:host='.$this->zp_mysql_host.';port=9306;dbname='.$this->zp_mysql_database.';', $this->zp_mysql_user, $this->zp_mysql_pass);
-            } catch (PDOException $e) {
-                print "Error!: " . $e->getMessage() . "<br/>";
-                die();
+            if ( ! $dbh = $this->getDatabaseHandle()) {
+                return false;
             }
 
             if($event->data['type'] == 'create' && $event->data['modification_result'])
@@ -283,6 +301,8 @@
                     $update_query->execute();
 
                     $this->zenphoto_login($user, $event->data['params'][1]["pass"]);
+
+                    $this->zenphoto_grantAlbumRights($event->data['params'][0]);
                 }
             }
             else if($event->data['type'] == 'delete' && $event->data['modification_result'] > 0)
@@ -296,5 +316,41 @@
             }
         }
 
+        function zenphoto_grantAlbumRights($username) {
+            $userid = $this->zenphoto_getUserId($username);
 
+            if( ! $userid) {
+                return false;
+            }
+            
+            if(count($this->zp_albums) == 0) {
+                return false;
+            }
+
+            if ($dbh = $this->getDatabaseHandle()) {
+                $placeholders = str_repeat('?,', count($this->zp_albums) - 1) . '?';
+                $select_query = $dbh->prepare('SELECT id, title FROM  '. $this->zp_mysql_prefix . 'albums  WHERE title IN ('.$placeholders.');');
+                $select_query->setFetchMode(PDO::FETCH_ASSOC);
+                $select_query->execute($this->zp_albums);
+                foreach ($select_query as $result) {
+                    /* check if the connection between user and album already exists */
+                    $sao_query = $dbh->query('SELECT COUNT(*) ' .
+                        'FROM  '. $this->zp_mysql_prefix . 'admin_to_object ' .
+                        'WHERE adminid = ' . $userid . ' AND objectid = ' . $result["id"] . ' AND type = "albums";');
+                    $entryexists = $sao_query->fetchColumn();
+                    if ($entryexists) {
+                        continue;
+                    }
+
+                    /* create the connection between user and album */
+                    $insert_query = $dbh->prepare('INSERT INTO '. $this->zp_mysql_prefix . 'admin_to_object (adminid, objectid, type, edit) ' .
+                        'VALUES (:userid, :albumid, "albums", 32766);');
+                    $insert_query->bindParam(':userid', $userid);
+                    $insert_query->bindValue(':albumid', $result["id"]);
+                    $insert_query->execute();
+                }
+            } else {
+                return false;
+            }
+        }
     }

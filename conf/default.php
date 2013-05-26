@@ -11,3 +11,5 @@ $conf['synchronize_users'] = 1;
 $conf['zenphoto_permissions'] = 'USER_RIGHTS, OVERVIEW_RIGHTS, UPLOAD_RIGHTS, ALBUM_RIGHTS, VIEW_FULLIMAGE_RIGHTS, VIEW_GALLERY_RIGHTS';
 $conf['zp_hash_method'] = 'pbkdf2';
 $conf['single_sign_on'] = 1;
+$conf['upload_albums'] = '';
+$conf['ignored_users'] = 'admin';
