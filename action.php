@@ -24,7 +24,7 @@
         var $zp_mysql_host;
         var $zp_mysql_database;
         var $zp_mysql_prefix;
-        var $zp_userpass_hash; // This hash value could be found on zenphoto admin/options/general tab
+        var $zp_userpass_hash; // This hash value can be found in the zenphoto options database with key "extra_auth_hash_text"
         var $zp_rights;
         var $zp_hash_method;
         var $zp_albums;
@@ -43,6 +43,8 @@
             $this->zp_rights = self::getNumericRights($this->getConf('zenphoto_permissions'));
             $this->zp_albums = explode(",", $this->getConf('upload_albums'));
             $this->ignored_users = explode(",", $this->getConf('ignored_users'));
+
+            $this->setupLocale();
         }
 
 
