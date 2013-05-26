@@ -213,7 +213,13 @@
         }
 
         /**
-         * Set cookie to login zenphoto as well
+         * Set zenphoto session cookie (log in to zenphoto)
+         *
+         * @param string user username
+         * @param string password user's password
+         * @param bool sticky lifetime of set cookie (1a if true)
+         * 
+         * @return void
          */
         function zenphoto_login($user, $password, $sticky=true) {
             if($this->getConf('single_sign_on'))
@@ -231,13 +237,57 @@
         }
 
         /**
-         * Set cookie to logout zenphoto as well
+         * Remove zenphoto session cookie (log out)
          *
          * @author Stefan Agner <stefan@agner.ch>
          */
         function zenphoto_logout() {
             if($this->getConf('single_sign_on'))
               setcookie($this->zp_cookie_name, '', time()-31536000, $this->zp_path);
+        }
+
+        /**
+         * Grant upload (and view) rights to the albums mentioned in conf(upload_albums)
+         *
+         * @param string username
+         * @return bool false on failure
+         */
+        function zenphoto_grantAlbumRights($username) {
+            $userid = $this->zenphoto_getUserId($username);
+
+            if( ! $userid) {
+                return false;
+            }
+            
+            if(count($this->zp_albums) == 0) {
+                return false;
+            }
+
+            if ($dbh = $this->getDatabaseHandle()) {
+                $placeholders = str_repeat('?,', count($this->zp_albums) - 1) . '?';
+                $select_query = $dbh->prepare('SELECT id, title FROM  '. $this->zp_mysql_prefix . 'albums  WHERE title IN ('.$placeholders.');');
+                $select_query->setFetchMode(PDO::FETCH_ASSOC);
+                $select_query->execute($this->zp_albums);
+                foreach ($select_query as $result) {
+                    /* check if the connection between user and album already exists */
+                    $sao_query = $dbh->query('SELECT COUNT(*) ' .
+                        'FROM  '. $this->zp_mysql_prefix . 'admin_to_object ' .
+                        'WHERE adminid = ' . $userid . ' AND objectid = ' . $result["id"] . ' AND type = "albums";');
+                    $entryexists = $sao_query->fetchColumn();
+                    if ($entryexists) {
+                        continue;
+                    }
+
+                    /* create the connection between user and album */
+                    $insert_query = $dbh->prepare('INSERT INTO '. $this->zp_mysql_prefix . 'admin_to_object (adminid, objectid, type, edit) ' .
+                        'VALUES (:userid, :albumid, "albums", 32766);');
+                    $insert_query->bindParam(':userid', $userid);
+                    $insert_query->bindValue(':albumid', $result["id"]);
+                    $insert_query->execute();
+                }
+            } else {
+                return false;
+            }
         }
 
         /**
@@ -254,7 +304,7 @@
 
 
         /**
-         * Set cookie to login zenphoto as well
+         * Hook into login event and log in to zenphoto too
          *
          * @author Stefan Agner <stefan@agner.ch>
          */
@@ -266,7 +316,7 @@
         }
 
         /**
-         * Update user information in zenphoto as well
+         * Create/Update user information in zenphoto database
          */
         function event_userchange(&$event, $param) {
             if (in_array($event->data['params'][0], $this->ignored_users)) {
@@ -330,44 +380,6 @@
                     $delete_query->bindParam(":user", $user);
                     $delete_query->execute();
                 }
-            }
-        }
-
-        function zenphoto_grantAlbumRights($username) {
-            $userid = $this->zenphoto_getUserId($username);
-
-            if( ! $userid) {
-                return false;
-            }
-            
-            if(count($this->zp_albums) == 0) {
-                return false;
-            }
-
-            if ($dbh = $this->getDatabaseHandle()) {
-                $placeholders = str_repeat('?,', count($this->zp_albums) - 1) . '?';
-                $select_query = $dbh->prepare('SELECT id, title FROM  '. $this->zp_mysql_prefix . 'albums  WHERE title IN ('.$placeholders.');');
-                $select_query->setFetchMode(PDO::FETCH_ASSOC);
-                $select_query->execute($this->zp_albums);
-                foreach ($select_query as $result) {
-                    /* check if the connection between user and album already exists */
-                    $sao_query = $dbh->query('SELECT COUNT(*) ' .
-                        'FROM  '. $this->zp_mysql_prefix . 'admin_to_object ' .
-                        'WHERE adminid = ' . $userid . ' AND objectid = ' . $result["id"] . ' AND type = "albums";');
-                    $entryexists = $sao_query->fetchColumn();
-                    if ($entryexists) {
-                        continue;
-                    }
-
-                    /* create the connection between user and album */
-                    $insert_query = $dbh->prepare('INSERT INTO '. $this->zp_mysql_prefix . 'admin_to_object (adminid, objectid, type, edit) ' .
-                        'VALUES (:userid, :albumid, "albums", 32766);');
-                    $insert_query->bindParam(':userid', $userid);
-                    $insert_query->bindValue(':albumid', $result["id"]);
-                    $insert_query->execute();
-                }
-            } else {
-                return false;
             }
         }
     }
