@@ -170,7 +170,12 @@
                 $select_query->bindParam(':user', $user);
                 $select_query->execute();
                 
-                return $select_query->fetchColumn(1) ;
+                $hashmethod = $select_query->fetchColumn(1);
+                if ($hashmethod === FALSE) {
+                    $hashmethod = $this->zp_hash_method;
+                }
+
+                return $hashmethod;
             }
         }
 
@@ -369,7 +374,7 @@
                     $update_query->bindParam(":user", $event->data['params'][0]);
                     $update_query->execute();
 
-                    $this->zenphoto_login($event->data['params'][0], $event->data['params'][1]["pass"]); //this will remove the login an admin changing the password of another user
+                    $this->zenphoto_login($event->data['params'][0], $event->data['params'][1]["pass"]);
 
                     $this->zenphoto_grantAlbumRights($event->data['params'][0]);
                 }
