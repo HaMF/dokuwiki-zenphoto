@@ -34,7 +34,7 @@
 
         function action_plugin_zenphotosso() {
             $this->zp_cookie_name = 'zp_user_auth';
-            $this->zp_path = $this->getConf('zenphoto_path');
+            $this->zp_path = '/' . trim($this->getConf('zenphoto_path'), '/') . '/';
             $this->zp_mysql_user = $this->getConf('mysql_user');
             $this->zp_mysql_pass = $this->getConf('mysql_password');
             $this->zp_mysql_host = $this->getConf('mysql_host');
@@ -54,6 +54,11 @@
         }
 
 
+        /** 
+         * Connect to ZP mysql database and store database connection handle in class variable 
+         * 
+         * @return PDO databasehandle | bool false on error
+         */
         function getDatabaseHandle() {
             if (isset($this->dbh) ) {
                 return $this->dbh;
@@ -68,12 +73,26 @@
             }
         }
 
+        /**
+         * Convert a human readable string (config option) for the hash algorithm to 
+         * numeric representation as used by ZP
+         * 
+         * @param string hash_algorithm (md5, sha1, pbkdf2)
+         * @return integer hash_algorithm (0, 1, 2)
+         */  
         static function getNumericHashMethod($zp_hash_method) {
             $hash_methods = array('md5' => 0, 'sha1' => 1, 'pbkdf2' => 2);
 
             return $hash_methods[$zp_hash_method];
         }
 
+        /**
+         * Convert list of human readable rights strings to one numeric value
+         * (additive with values as defined in rightsset) as stored in the database.
+         * 
+         * @param array zenphoto_permissions array of strings as in ZP rightsset
+         * @return array zenphoto_permissions array of integers
+         */
         static function getNumericRights($zenphoto_permissions) {
             $right_to_numeric = function($v, $search_key) {
                 return $v + self::getRightsset()[$search_key]['value'];
@@ -84,7 +103,12 @@
             return array_reduce($rights, $right_to_numeric);
         }
             
-
+        /**
+         * Return ZP rightsset that lists user rights and corresponding
+         * numerical representation 
+         *
+         * @return array rightsset
+         */
         static function getRightsset() {
             return array( 'NO_RIGHTS' => array('value'=>1,'name'=>gettext('No rights'),'set'=>'','display'=>false,'hint'=>''),
                         'OVERVIEW_RIGHTS' => array('value'=>pow(2,2),'name'=>gettext('Overview'),'set'=>gettext('General'),'display'=>true,'hint'=>gettext('Users with this right may view the admin overview page.')),
@@ -130,263 +154,8 @@
                                        'event_userchange');
             $controller->register_hook('ACTION_HEADERS_SEND', 'BEFORE', $this,
                                        'event_headers_send');
-
-
         }
 
-        /** PBKDF2 Implementation (described in RFC 2898)
-         *  from zenphoto. licensed under te gpl 2.0
-         *
-         *  @param string p password
-         *  @param string s salt
-         *  @param int c iteration count (use 1000 or higher)
-         *  @param int kl derived key length
-         *  @param string a hash algorithm
-         *
-         *  @return string derived key
-        */ 
-        static function pbkdf2($p, $s, $c=1000, $kl=32, $a = 'sha256') {
-                        $hl = strlen(hash($a, null, true)); # Hash length
-                        $kb = ceil($kl / $hl);              # Key blocks to compute
-                        $dk = '';                           # Derived key
-                        # Create key
-                        for ( $block = 1; $block <= $kb; $block ++ ) {
-                                        # Initial hash for this block
-                                        $ib = $b = hash_hmac($a, $s . pack('N', $block), $p, true);
-                                        # Perform block iterations
-                                       for ( $i = 1; $i < $c; $i ++ )
-                                                        # XOR each iterate
-                                                        $ib ^= ($b = hash_hmac($a, $b, $p, true));
-                                        $dk .= $ib; # Append iterated block
-                 }
-                        # Return derived key of correct length
-                        return substr($dk, 0, $kl);
-        }
-
-        /**
-         * Get the correct password hashing algorithm for a user with given username
-         *
-         *  @param string user username
-         * 
-         *  @return (integer >= 2) 2=pbkdf2 1=sha1 0=md5 
-         */
-        function zenphoto_getUserHashMethod($user) {
-            if ($dbh = $this->getDatabaseHandle()) {
-                $select_query = $dbh->prepare('SELECT user, passhash  FROM  '. $this->zp_mysql_prefix . 'administrators  WHERE user = :user;');
-                $select_query->bindParam(':user', $user);
-                $select_query->execute();
-                
-                $hashmethod = $select_query->fetchColumn(1);
-                if ($hashmethod === FALSE) {
-                    $hashmethod = $this->zp_hash_method;
-                }
-
-                return $hashmethod;
-            }
-        }
-
-        /**
-         * Calculates password hash the zenphoto way
-         *
-         *  @param string user
-         *  @param string password
-         * 
-         *  @return string derived hash with seed conf zp_userpass_hash
-         */
-        function zenphoto_hashpw($username, $password) {
-            switch ($this->zenphoto_getUserHashMethod($username)) {
-                case 2:
-                    return base64_encode(self::pbkdf2($password,$username.$this->zp_userpass_hash));
-                case 1:
-                    return sha1($username.$password.$this->zp_userpass_hash);
-                case 0:
-                    return md5($username.$password.$this->zp_userpass_hash);
-            }
-        }
-
-        /**
-         * Get user-id in zenphoto by user name
-         *
-         * @param string username
-         * @param integer userid | bool false
-         */
-
-        function zenphoto_getUserId($username) {
-            if ($dbh = $this->getDatabaseHandle()) {
-                $select_query = $dbh->prepare("SELECT id FROM " . $this->zp_mysql_prefix . "administrators WHERE user = :user");
-                $select_query->bindParam(":user", $username);
-                $select_query->execute();
-                $select_data = $select_query->fetch();
-
-                return $select_data['id'];
-            } else {
-                return false;
-            }
-                
-        }
-
-        /**
-         * Set zenphoto session cookie (log in to zenphoto)
-         *
-         * @param string user username
-         * @param string password user's password
-         * @param bool sticky lifetime of set cookie (1a if true)
-         * 
-         * @return void
-         */
-        function zenphoto_login($user, $password, $sticky=true) {
-            if($this->getConf('single_sign_on'))
-            {
-                $userid = $this->zenphoto_getUserId($user);
-                if( ! $userid) {
-                    return false;
-                }
-                $pwhash = $this->zenphoto_hashpw($user, $password);
-                if($sticky)
-                    setcookie($this->zp_cookie_name, $pwhash . "." . $userid, time()+(60*60*24*365), $this->zp_path); // 1 year, Dokuwiki default
-                else
-                    setcookie($this->zp_cookie_name, $pwhash . "." . $userid, null, $this->zp_path); // browser close
-            }
-        }
-
-        /**
-         * Remove zenphoto session cookie (log out)
-         *
-         * @author Stefan Agner <stefan@agner.ch>
-         */
-        function zenphoto_logout() {
-            if($this->getConf('single_sign_on'))
-              setcookie($this->zp_cookie_name, '', time()-31536000, $this->zp_path);
-        }
-
-        /**
-         * Grant upload (and view) rights to the albums mentioned in conf(upload_albums)
-         *
-         * @param string username
-         * @return bool false on failure
-         */
-        function zenphoto_grantAlbumRights($username) {
-            $userid = $this->zenphoto_getUserId($username);
-            if( ! $userid) {
-                return false;
-            }
-            
-            if(count($this->zp_albums) == 0) {
-                return false;
-            }
-
-
-            if ($dbh = $this->getDatabaseHandle()) {
-                $placeholders = str_repeat('?,', count($this->zp_albums) - 1) . '?';
-                $select_query = $dbh->prepare('SELECT id, title FROM  '. $this->zp_mysql_prefix . 'albums  WHERE title IN ('.$placeholders.');');
-                $select_query->setFetchMode(PDO::FETCH_ASSOC);
-                $select_query->execute($this->zp_albums);
-                foreach ($select_query as $result) {
-                    /* check if the connection between user and album already exists */
-                    $sao_query = $dbh->query('SELECT COUNT(*) ' .
-                        'FROM  '. $this->zp_mysql_prefix . 'admin_to_object ' .
-                        'WHERE adminid = ' . $userid . ' AND objectid = ' . $result["id"] . ' AND type = "albums";');
-                    $entryexists = $sao_query->fetchColumn();
-                    if ($entryexists) {
-                        continue;
-                    }
-
-                    /* create the connection between user and album */
-                    $insert_query = $dbh->prepare('INSERT INTO '. $this->zp_mysql_prefix . 'admin_to_object (adminid, objectid, type, edit) ' .
-                        'VALUES (:userid, :albumid, "albums", 32763);'); //grant full rights
-                    $insert_query->bindParam(':userid', $userid);
-                    $insert_query->bindValue(':albumid', $result["id"]);
-                    $insert_query->execute();
-                }
-            } else {
-                return false;
-            }
-        }
-
-        /**
-         * Grant upload (and view) rights to the albums mentioned in conf(upload_albums)
-         *
-         * @param string username
-         * @return bool false on failure
-         */
-        function zenphoto_deleteAlbumRightsForUser($username) {
-            $userid = $this->zenphoto_getUserId($username);
-            if( ! $userid) {
-                return false;
-            }
-            
-            if(count($this->zp_albums) == 0) {
-                return false;
-            }
-
-
-            if ($dbh = $this->getDatabaseHandle()) {
-                $placeholders = str_repeat('?,', count($this->zp_albums) - 1) . '?';
-                $select_query = $dbh->prepare('SELECT id, title FROM  '. $this->zp_mysql_prefix . 'albums  WHERE title IN ('.$placeholders.');');
-                $select_query->setFetchMode(PDO::FETCH_ASSOC);
-                $select_query->execute($this->zp_albums);
-                foreach ($select_query as $result) {
-                    /* check if the connection between user and album already exists */
-                    $delete_query = $dbh->query('DELETE ' .
-                        'FROM  '. $this->zp_mysql_prefix . 'admin_to_object ' .
-                        'WHERE adminid = ' . $userid . ' AND objectid = ' . $result["id"] . ' AND type = "albums";');
-                    return $delete_query->execute();
-                }
-            } else {
-                return false;
-            }
-        }
-
-
-        /** Check if user with $username exists in zenphoto database
-         * @param string username
-         * @return integer 0 if does not exist, userid otherwise
-         */
-        function zenphoto_userExists($username) {
-            return $this->zenphoto_getUserId($username);
-        }
-
-        /** Delete user with $username in zenphoto database
-         * @param string username
-         * @return bool
-         */
-        function zenphoto_deleteUser($username) {
-            if ( ! $dbh = $this->getDatabaseHandle()) {
-                return false;
-            }
-
-            $delete_query = $dbh->prepare("DELETE FROM ".$this->zp_mysql_prefix."administrators WHERE user = :user;");
-            $delete_query->bindParam(":user", $username);
-            return $delete_query->execute();
-        }
-
-
-        /** Create user in zenphoto database according to details of dokuwiki user with $username 
-         * @param string username
-         * @param string password
-         * @param string name
-         * @param string email
-         * @return bool
-         */
-        function zenphoto_createUser($username, $password, $name, $email) {
-            if ($this->zenphoto_userExists($username)) {
-                return false;
-            }
-            if ( ! $dbh = $this->getDatabaseHandle()) {
-                return false;
-            }
-            $create_query = $dbh->prepare("INSERT INTO ".$this->zp_mysql_prefix."administrators (user, pass, passhash, name, email, rights, valid, custom_data) ".
-                            "VALUES (:user, :pass, :passhash, :name, :email, :rights, :valid, :custom);");
-            $create_query->bindParam(':user',     $username);
-            $create_query->bindParam(':pass',     $this->zenphoto_hashpw($username, $password));
-            $create_query->bindParam(':passhash', $this->zp_hash_method);
-            $create_query->bindParam(':name',     $name);
-            $create_query->bindParam(':email',    $email);
-            $create_query->bindParam(':rights',   $this->zp_rights);
-            $create_query->bindValue(':valid',    1);
-            $create_query->bindValue(':custom',   "User generated by DokuWiki zenphotosso Plug-In.");
-            return $create_query->execute();
-        }
         /**
          * Check if user is still logged in just before headers are sent (to be able to delete the cookie)
          *
@@ -398,7 +167,6 @@
                 $this->zenphoto_logout();
             }
         }
-
 
         /**
          * Hook into login event and log in to zenphoto too
@@ -516,5 +284,260 @@
                     $this->zenphoto_deleteUser($user);
                 }
             }
+        }
+
+
+        /** PBKDF2 Implementation (described in RFC 2898)
+         *  from zenphoto. licensed under te gpl 2.0
+         *
+         *  @param string p password
+         *  @param string s salt
+         *  @param int c iteration count (use 1000 or higher)
+         *  @param int kl derived key length
+         *  @param string a hash algorithm
+         *
+         *  @return string derived key
+        */ 
+        static function pbkdf2($p, $s, $c=1000, $kl=32, $a = 'sha256') {
+                        $hl = strlen(hash($a, null, true)); # Hash length
+                        $kb = ceil($kl / $hl);              # Key blocks to compute
+                        $dk = '';                           # Derived key
+                        # Create key
+                        for ( $block = 1; $block <= $kb; $block ++ ) {
+                                        # Initial hash for this block
+                                        $ib = $b = hash_hmac($a, $s . pack('N', $block), $p, true);
+                                        # Perform block iterations
+                                       for ( $i = 1; $i < $c; $i ++ )
+                                                        # XOR each iterate
+                                                        $ib ^= ($b = hash_hmac($a, $b, $p, true));
+                                        $dk .= $ib; # Append iterated block
+                 }
+                        # Return derived key of correct length
+                        return substr($dk, 0, $kl);
+        }
+
+        /**
+         * Get the correct password hashing algorithm for a user with given username
+         *
+         *  @param string user username
+         * 
+         *  @return (integer >= 2) 2=pbkdf2 1=sha1 0=md5 
+         */
+        function zenphoto_getUserHashMethod($username) {
+            if ($dbh = $this->getDatabaseHandle()) {
+                $select_query = $dbh->prepare('SELECT user, passhash  FROM  '. $this->zp_mysql_prefix . 'administrators  WHERE user = :user;');
+                $select_query->bindParam(':user', $username);
+                $select_query->execute();
+                
+                $hashmethod = $select_query->fetchColumn(1);
+                if ($hashmethod === FALSE) {
+                    $hashmethod = $this->zp_hash_method;
+                }
+
+                return $hashmethod;
+            }
+        }
+
+        /**
+         * Calculates password hash with the user dependend algorithm
+         *
+         *  @param string user
+         *  @param string password
+         * 
+         *  @return string derived hash with seed conf zp_userpass_hash
+         */
+        function zenphoto_hashpw($username, $password) {
+            switch ($this->zenphoto_getUserHashMethod($username)) {
+                case 2:
+                    return base64_encode(self::pbkdf2($password,$username.$this->zp_userpass_hash));
+                case 1:
+                    return sha1($username.$password.$this->zp_userpass_hash);
+                case 0:
+                    return md5($username.$password.$this->zp_userpass_hash);
+            }
+        }
+
+        /**
+         * Get user-id in zenphoto by username
+         *
+         * @param string username
+         * @param integer userid | bool false
+         */
+
+        function zenphoto_getUserId($username) {
+            if ($dbh = $this->getDatabaseHandle()) {
+                $select_query = $dbh->prepare("SELECT id FROM " . $this->zp_mysql_prefix . "administrators WHERE user = :user");
+                $select_query->bindParam(":user", $username);
+                $select_query->execute();
+                $select_data = $select_query->fetch();
+
+                return $select_data['id'];
+            } else {
+                return false;
+            }
+                
+        }
+
+        /**
+         * Set zenphoto session cookie (log in to zenphoto)
+         *
+         * @param string user username
+         * @param string password user's password
+         * @param bool sticky lifetime of set cookie (1a if true)
+         * 
+         * @return void
+         */
+        function zenphoto_login($username, $password, $sticky=true) {
+            if($this->getConf('single_sign_on'))
+            {
+                $userid = $this->zenphoto_getUserId($username);
+                if( ! $userid) {
+                    return false;
+                }
+                $pwhash = $this->zenphoto_hashpw($user, $password);
+                if($sticky)
+                    setcookie($this->zp_cookie_name, $pwhash . "." . $userid, time()+(60*60*24*365), $this->zp_path); // 1 year, Dokuwiki default
+                else
+                    setcookie($this->zp_cookie_name, $pwhash . "." . $userid, null, $this->zp_path); // browser close
+            }
+        }
+
+        /**
+         * Remove zenphoto session cookie (log out)
+         *
+         * @author Stefan Agner <stefan@agner.ch>
+         */
+        function zenphoto_logout() {
+            if($this->getConf('single_sign_on'))
+              setcookie($this->zp_cookie_name, '', time()-31536000, $this->zp_path);
+        }
+
+        /**
+         * Grant upload (and view) rights to the albums mentioned in conf(upload_albums)
+         *
+         * @param string username
+         * @return bool false on failure
+         */
+        function zenphoto_grantAlbumRights($username) {
+            $userid = $this->zenphoto_getUserId($username);
+            if( ! $userid) {
+                return false;
+            }
+            
+            if(count($this->zp_albums) == 0) {
+                return false;
+            }
+
+
+            if ($dbh = $this->getDatabaseHandle()) {
+                $placeholders = str_repeat('?,', count($this->zp_albums) - 1) . '?';
+                $select_query = $dbh->prepare('SELECT id, title FROM  '. $this->zp_mysql_prefix . 'albums  WHERE title IN ('.$placeholders.');');
+                $select_query->setFetchMode(PDO::FETCH_ASSOC);
+                $select_query->execute($this->zp_albums);
+                foreach ($select_query as $result) {
+                    /* check if the connection between user and album already exists */
+                    $sao_query = $dbh->query('SELECT COUNT(*) ' .
+                        'FROM  '. $this->zp_mysql_prefix . 'admin_to_object ' .
+                        'WHERE adminid = ' . $userid . ' AND objectid = ' . $result["id"] . ' AND type = "albums";');
+                    $entryexists = $sao_query->fetchColumn();
+                    if ($entryexists) {
+                        continue;
+                    }
+
+                    /* create the connection between user and album */
+                    $insert_query = $dbh->prepare('INSERT INTO '. $this->zp_mysql_prefix . 'admin_to_object (adminid, objectid, type, edit) ' .
+                        'VALUES (:userid, :albumid, "albums", 32763);'); //grant full rights
+                    $insert_query->bindParam(':userid', $userid);
+                    $insert_query->bindValue(':albumid', $result["id"]);
+                    $insert_query->execute();
+                }
+            } else {
+                return false;
+            }
+        }
+
+        /**
+         * Grant upload (and view) rights to the albums mentioned in conf(upload_albums)
+         *
+         * @param string username
+         * @return bool false on failure
+         */
+        function zenphoto_deleteAlbumRightsForUser($username) {
+            $userid = $this->zenphoto_getUserId($username);
+            if( ! $userid) {
+                return false;
+            }
+            
+            if(count($this->zp_albums) == 0) {
+                return false;
+            }
+
+
+            if ($dbh = $this->getDatabaseHandle()) {
+                $placeholders = str_repeat('?,', count($this->zp_albums) - 1) . '?';
+                $select_query = $dbh->prepare('SELECT id, title FROM  '. $this->zp_mysql_prefix . 'albums  WHERE title IN ('.$placeholders.');');
+                $select_query->setFetchMode(PDO::FETCH_ASSOC);
+                $select_query->execute($this->zp_albums);
+                foreach ($select_query as $result) {
+                    /* check if the connection between user and album already exists */
+                    $delete_query = $dbh->query('DELETE ' .
+                        'FROM  '. $this->zp_mysql_prefix . 'admin_to_object ' .
+                        'WHERE adminid = ' . $userid . ' AND objectid = ' . $result["id"] . ' AND type = "albums";');
+                    return $delete_query->execute();
+                }
+            } else {
+                return false;
+            }
+        }
+
+        /** Check if user with $username exists in zenphoto database
+         * @param string username
+         * @return integer 0 if does not exist, userid otherwise
+         */
+        function zenphoto_userExists($username) {
+            return $this->zenphoto_getUserId($username);
+        }
+
+        /** Delete user with $username in zenphoto database
+         * @param string username
+         * @return bool
+         */
+        function zenphoto_deleteUser($username) {
+            if ( ! $dbh = $this->getDatabaseHandle()) {
+                return false;
+            }
+
+            $delete_query = $dbh->prepare("DELETE FROM ".$this->zp_mysql_prefix."administrators WHERE user = :user;");
+            $delete_query->bindParam(":user", $username);
+            return $delete_query->execute();
+        }
+
+        /** 
+         * Create user in zenphoto database according to details of dokuwiki user with $username 
+         * 
+         * @param string username
+         * @param string password
+         * @param string name
+         * @param string email
+         * @return bool
+         */
+        function zenphoto_createUser($username, $password, $name, $email) {
+            if ($this->zenphoto_userExists($username)) {
+                return false;
+            }
+            if ( ! $dbh = $this->getDatabaseHandle()) {
+                return false;
+            }
+            $create_query = $dbh->prepare("INSERT INTO ".$this->zp_mysql_prefix."administrators (user, pass, passhash, name, email, rights, valid, custom_data) ".
+                            "VALUES (:user, :pass, :passhash, :name, :email, :rights, :valid, :custom);");
+            $create_query->bindParam(':user',     $username);
+            $create_query->bindParam(':pass',     $this->zenphoto_hashpw($username, $password));
+            $create_query->bindParam(':passhash', $this->zp_hash_method);
+            $create_query->bindParam(':name',     $name);
+            $create_query->bindParam(':email',    $email);
+            $create_query->bindParam(':rights',   $this->zp_rights);
+            $create_query->bindValue(':valid',    1);
+            $create_query->bindValue(':custom',   "User generated by DokuWiki zenphotosso Plug-In.");
+            return $create_query->execute();
         }
     }

@@ -1,5 +1,5 @@
 <?php
-$lang['zenphoto_path']        = "ZP Pfad (http://deinserver[/pfad/])";
+$lang['zenphoto_path']        = "ZP Pfad (http://deinserver/[pfad]/)";
 $lang['mysql_user']           = "ZP MySQL Benutzername";
 $lang['mysql_password']       = "ZP MySQL Passwort";
 $lang['mysql_host']           = "ZP MySQL Hostname";
