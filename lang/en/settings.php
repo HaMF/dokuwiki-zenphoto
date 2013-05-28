@@ -1,5 +1,5 @@
 <?php
-$lang['zenphoto_path']        = "ZP path (http://yourserver/[path])";
+$lang['zenphoto_path']        = "ZP path (http://yourserver[/path/])";
 $lang['mysql_user']           = "ZP mysql user name";
 $lang['mysql_password']       = "ZP mysql password";
 $lang['mysql_host']           = "ZP mysql host name";
@@ -12,3 +12,4 @@ $lang['zp_hash_method']       = 'Password hashing algorithm';
 $lang['single_sign_on']       = 'Enable single sign-on';
 $lang['ignored_users'] 		  = 'Users not to synchronize (comma separated)';
 $lang['upload_albums'] 		  = 'Albums with upload rights for created ZP users (comma separated)';
+$lang['groups'] 			  = 'Synchronize only users of this group(s). Leave empty to synchronize all';

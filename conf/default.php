@@ -1,6 +1,6 @@
 <?php
 
-$conf['zenphoto_path'] = "/photos";
+$conf['zenphoto_path'] = "/photos/";
 $conf['mysql_user'] = "";
 $conf['mysql_password'] = "";
 $conf['mysql_host'] = "localhost";
@@ -13,3 +13,5 @@ $conf['zp_hash_method'] = 'pbkdf2';
 $conf['single_sign_on'] = 1;
 $conf['ignored_users'] = 'admin';
 $conf['upload_albums'] = '';
+$conf['groups'] = array('user');
+
