@@ -148,22 +148,22 @@
          */
         function register(&$controller) {
 
-            $controller->register_hook('AUTH_LOGIN_CHECK', 'BEFORE', $this,
+            $controller->register_hook('AUTH_LOGIN_CHECK', 'AFTER', $this,
                                        'event_login');
             $controller->register_hook('AUTH_USER_CHANGE', 'AFTER', $this,
                                        'event_userchange');
-            $controller->register_hook('ACTION_HEADERS_SEND', 'BEFORE', $this,
-                                       'event_headers_send');
+            $controller->register_hook('ACTION_ACT_PREPROCESS', 'BEFORE', $this,
+                                       'event_action_preprocess');
         }
 
         /**
-         * Check if user is still logged in just before headers are sent (to be able to delete the cookie)
+         * Hook to every action (?do=...) and check if the user logs out,
+         * then delete the cookie for zenphoto
          *
          * @author Stefan Agner <stefan@agner.ch>
          */
-        function event_headers_send(&$event, $param) {
-            // No userlogin, might be a logout 
-            if($_SERVER['REMOTE_USER'] == "") {
+        function event_action_preprocess(&$event, $param) {
+            if ($event->data == 'logout') {
                 $this->zenphoto_logout();
             }
         }
@@ -175,7 +175,7 @@
          */
         function event_login(&$event, $param) {
             // Check if user is set (this is only the case if we just pressed login, while the session is running the event happens but no user is set)
-            if($event->data['user'] != "" && ! in_array($event->data['user'], $this->ignored_users)) {
+            if($event->data['user'] != "" && count(array_intersect($event->data['user'], $this->ignored_users)) == 0) {
                 $this->zenphoto_login($event->data['user'], $event->data['password'], $event->data['sticky'] == 1);
             }
         }
@@ -252,7 +252,6 @@
 
                     $this->zenphoto_grantAlbumRights($username);
                 }
-
                 if (isset($event->data['params'][1]["mail"]) && $this->zenphoto_userExists($username))
                 {
                     $update_query =  $dbh->prepare("UPDATE ".$this->zp_mysql_prefix."administrators SET email = :email WHERE user = :user;");
@@ -262,7 +261,6 @@
 
                     $this->zenphoto_grantAlbumRights($username);
                 }
-
                 if (isset($event->data['params'][1]["pass"]) && $this->zenphoto_userExists($username))
                 {
                     $update_query =  $dbh->prepare("UPDATE ".$this->zp_mysql_prefix."administrators SET pass = :pass, passhash = :passhash WHERE user = :user;");
@@ -275,6 +273,15 @@
 
                     $this->zenphoto_grantAlbumRights($username);
                 }
+                if (isset($event->data['params'][1]["pass"]) && (count($this->groups == 0) 
+                    || count(array_intersect($INFO['userinfo']['grps'], $this->groups))) 
+                    && ! $this->zenphoto_userExists($username))
+                {
+                    $this->zenphoto_createUser($username, $event->data['params'][1]['pass'], $INFO['userinfo']['name'], $INFO['userinfo']['email']); 
+                    $this->zenphoto_logout();   
+                    $this->zenphoto_login($username, $event->data['params'][1]['pass']);
+                    $this->zenphoto_grantAlbumRights($username);
+                }     
             }
             else if($event->data['type'] == 'delete' && $event->data['modification_result'] > 0)
             {
@@ -394,7 +401,7 @@
                 if( ! $userid) {
                     return false;
                 }
-                $pwhash = $this->zenphoto_hashpw($user, $password);
+                $pwhash = $this->zenphoto_hashpw($username, $password);
                 if($sticky)
                     setcookie($this->zp_cookie_name, $pwhash . "." . $userid, time()+(60*60*24*365), $this->zp_path); // 1 year, Dokuwiki default
                 else
